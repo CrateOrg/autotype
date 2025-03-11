@@ -1,0 +1,2 @@
+#!/usr/bin/env bash
+complete -W "-h --help -d --delay -m --mod child generic clerk programmer hacker" autotype

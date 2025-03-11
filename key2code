@@ -1,0 +1,70 @@
+#!/usr/bin/env python3
+
+import sys
+
+
+def error(message):
+    print("ERROR: " + message, file=sys.stderr)
+    exit(1)
+
+
+def parse_input_event_codes(key_to_find=None, list_keys=False):
+    key_dict = {}
+    file_keys = "/usr/include/linux/input-event-codes.h"
+
+    try:
+        with open(file_keys, 'r') as file:
+            for line in file:
+                parts = line.split()
+                if (len(parts) >= 3 and parts[0] == "#define" and
+                        (parts[1].startswith("KEY_") or
+                         parts[1].startswith("BTN_"))):
+                    key, value = parts[1], parts[2]
+                    if not value.startswith("("):
+                        key_dict[key] = value
+
+        # Resolve aliases
+        for key, value in key_dict.items():
+            while value in key_dict:
+                value = key_dict[value]
+            key_dict[key] = value
+
+        # Verify resolved values
+        for key, value in key_dict.items():
+            if not (value.isdigit() or value.startswith("0x")):
+                print(f"Error: Invalid value '{value}' for key {key}")
+                sys.exit(1)
+
+        if list_keys:
+            for key, value in key_dict.items():
+                print(f"{key} {value}")
+            return
+
+        if key_to_find:
+            if key_to_find in key_dict:
+                print(key_dict[key_to_find])
+            else:
+                error("Key " + key_to_find + " not found")
+
+    except FileNotFoundError:
+        error("File " + file_keys + " not found.")
+    except Exception as e:
+        error("Exception: " + str(e))
+
+
+def main():
+    arg = sys.argv[1] if len(sys.argv) > 1 else None
+
+    if len(sys.argv) < 2 or arg in ('--help', '-h'):
+        print("Usage: key2code KEY_XXX or BTN_XXX")
+        print("Parses /usr/include/linux/input-event-codes.h for key codes.")
+    elif arg in ('--list', '-l'):
+        parse_input_event_codes(key_to_find=None, list_keys=True)
+    elif arg.startswith(('KEY_', 'BTN_')):
+        parse_input_event_codes(arg)
+    else:
+        error("Invalid key format: " + arg + ". Use KEY_XXX or BTN_XXX")
+
+
+if __name__ == "__main__":
+    main()

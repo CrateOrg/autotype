@@ -1,0 +1,2 @@
+#!/usr/bin/env bash
+complete -W "-h --help -l --list KEY_ BTN_" key2code

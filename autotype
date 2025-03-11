@@ -1,0 +1,618 @@
+#!/usr/bin/env python3
+
+import os
+import sys
+import argparse
+import logging
+from subprocess import PIPE, Popen
+
+# PARSER INIT #################################################################
+
+# set main parser
+app_info = "Automate typing with xdotool or ydotool"
+parser = argparse.ArgumentParser(description=app_info)
+
+parser.add_argument(
+    "text",
+    help="Text to write or modifier keys to press. \
+    Can be read from file/stdin.",
+    nargs="?"  # Makes it optional (so --help works)
+)
+
+parser.add_argument(
+    "-d", "--delay",
+    help="Delay between each key press in milliseconds",
+    metavar='MS',
+    type=str
+)
+
+parser.add_argument(
+    "-m", "--mod",
+    help="Parse the input data as modifier key combination, not text. \
+    Does not work with reading from file/stdin.",
+    action='store_true'
+)
+
+args = parser.parse_args()
+
+if sys.stdin.isatty():
+    if args.text is None:
+        parser.print_help()
+        exit(1)
+
+
+# FUNCTIONS ###################################################################
+
+def error(message):
+    print("ERROR: " + message, file=sys.stderr)
+    exit(1)
+
+
+def debug(message):
+    logging.debug(message)
+
+
+def shell_cmd(cmd):
+    debug("cmd: " + cmd)
+    p = Popen(cmd, shell=True, stdout=PIPE, stderr=PIPE)
+    stdout_raw, stderr_raw = p.communicate()
+    stdout_clean = str(stdout_raw) \
+        .replace("b''", "").replace("b'", "").replace("b\"", "")
+    stderr_clean = str(stderr_raw) \
+        .replace("b''", "").replace("b'", "").replace("b\"", "")
+    stdout = stdout_clean.replace(r"\n'", "").replace(r"\n", " ")
+    stderr = stderr_clean.replace(r"\n'", "").replace(r"\n", " ")
+
+    if p.returncode != 0:
+        if stdout != '':
+            error("shell_cmd failed '" + cmd + "': " + stdout)
+        else:
+            error("shell_cmd failed '" + cmd + "': " + stderr)
+    else:
+        return stdout, stderr
+
+
+def is_installed(program):
+    if os.system("command -v " + program + " 1>/dev/null 2>/dev/null") != 0:
+        error(program + " is not installed")
+
+
+def virt_viewer_is_running():
+    # check if the current window is "virt-viewer" or "virt-manager"
+
+    command = "xdotool getactivewindow getwindowname"
+    cmd_result, cmd_error = shell_cmd(command)
+
+    if cmd_error:
+        error(command + ": " + cmd_error)
+
+    if " on QEMU/KVM" in cmd_result:
+        return True
+    else:
+        return False
+
+
+def get_keyboard_layout():
+    # if env AUTOTYPE_LAYOUT is set, return it
+    if os.getenv("AUTOTYPE_LAYOUT"):
+        return os.getenv("AUTOTYPE_LAYOUT")
+
+    # Open and read the /etc/default/keyboard file
+    with open('/etc/default/keyboard', 'r') as file:
+        for line in file:
+            if line.startswith('XKBLAYOUT'):
+                # Extract the layout value by splitting the line
+                layout = line.split('=')[1].strip().strip('"')
+                return layout
+    return None
+
+
+def get_ket2code_dict():
+    dict_key_codes = {}
+
+    is_installed("key2code")
+
+    try:
+        # will output a list like this: <KEY_NAME><SPACE><KEY_CODE>
+        output = os.popen('key2code --list').readlines()
+    except Exception as e:
+        output = ""
+        error(str(e))
+
+    # save the output to a dictionary
+    for line in output:
+        line = line.split()
+        dict_key_codes[line[0]] = line[1]
+
+    return dict_key_codes
+
+
+def text_to_tool_encoding(text, tool):
+    dict_xdotool_special = {
+        # Space-related Keys
+        ' ': 'space',  # Space key
+
+        # Mathematical and Symbolic Operators
+        '-': 'minus',  # Minus or hyphen
+        '_': 'underscore',  # Underscore
+        '+': 'plus',  # Plus sign
+        '=': 'equal',  # Equals sign
+        '<': 'less',  # Less than
+        '>': 'greater',  # Greater than
+        '*': 'asterisk',  # Asterisk
+        '/': 'slash',  # Forward slash
+        '\\': 'backslash',  # Backslash
+
+        # Punctuation Marks
+        '.': 'period',  # Period or dot
+        ',': 'comma',  # Comma
+        ':': 'colon',  # Colon
+        ';': 'semicolon',  # Semicolon
+        '!': 'exclam',  # Exclamation mark
+        '?': 'question',  # Question mark
+        '@': 'at',  # At symbol
+        '#': 'numbersign',  # Hash or pound sign
+        '$': 'dollar',  # Dollar sign
+        '%': 'percent',  # Percent sign
+        '^': 'caret',  # Caret symbol
+        '&': 'ampersand',  # Ampersand
+        '~': 'asciitilde',  # Tilde
+        '`': 'grave',  # Grave accent
+        '\'': 'apostrophe',  # Apostrophe or single quote
+        '"': 'quotedbl',  # Double quote
+
+        # Brackets and Parentheses
+        '(': 'parenleft',  # Left parenthesis
+        ')': 'parenright',  # Right parenthesis
+        '[': 'bracketleft',  # Left square bracket
+        ']': 'bracketright',  # Right square bracket
+        '{': 'braceleft',  # Left curly brace
+        '}': 'braceright',  # Right curly brace
+
+        # Pipe and Bar Symbols
+        '|': 'bar',  # Vertical bar or pipe
+
+        # Interprete linebreak as Return
+        '\n': 'Return'  # Linebreak
+    }
+
+    dict_ydotool_special_us = {
+        # Space-related Keys
+        ' ': 'KEY_SPACE',  # Space key
+
+        # Mathematical and Symbolic Operators
+        '-': 'KEY_MINUS',  # Minus or hyphen
+        '_': 'KEY_MINUS',  # Underscore (same as hyphen)
+        '+': 'KEY_KPPLUS',  # Plus sign
+        '=': 'KEY_EQUAL',  # Equals sign
+        '<': 'KEY_BACKSLASH',  # Less than
+        # (not explicitly listed, using backslash as alternative)
+        '>': 'KEY_BACKSLASH',  # Greater than (same as above)
+        '*': 'KEY_KPASTERISK',  # Asterisk
+        '/': 'KEY_KPSLASH',  # Forward slash
+        '\\': 'KEY_BACKSLASH',  # Backslash
+
+        # Punctuation Marks
+        '.': 'KEY_DOT',  # Period or dot
+        ',': 'KEY_COMMA',  # Comma
+        ':': 'KEY_SEMICOLON',  # Colon (no direct mapping, using semicolon)
+        ';': 'KEY_SEMICOLON',  # Semicolon
+        '!': 'KEY_1',  # Exclamation mark (Shift + 1)
+        '?': 'KEY_SLASH',  # Question mark (Shift + Slash)
+        '@': 'KEY_2',  # At symbol (Shift + 2)
+        '#': 'KEY_3',  # Hash or pound sign (Shift + 3)
+        '$': 'KEY_4',  # Dollar sign (Shift + 4)
+        '%': 'KEY_5',  # Percent sign (Shift + 5)
+        '^': 'KEY_6',  # Caret symbol (Shift + 6)
+        '&': 'KEY_7',  # Ampersand (Shift + 7)
+        '~': 'KEY_GRAVE',  # Tilde (Shift + Grave)
+        '`': 'KEY_GRAVE',  # Grave accent
+        "'": 'KEY_APOSTROPHE',  # Apostrophe or single quote
+        '"': 'KEY_APOSTROPHE',  # Double quote (Shift + Apostrophe)
+
+        # Brackets and Parentheses
+        '(': 'KEY_9',  # Left parenthesis (Shift + 9)
+        ')': 'KEY_0',  # Right parenthesis (Shift + 0)
+        '[': 'KEY_LEFTBRACE',  # Left square bracket
+        ']': 'KEY_RIGHTBRACE',  # Right square bracket
+        '{': 'KEY_LEFTBRACE',  # Left curly brace (Shift + [)
+        '}': 'KEY_RIGHTBRACE',  # Right curly brace (Shift + ])
+
+        # Pipe and Bar Symbols
+        '|': 'KEY_BACKSLASH',  # Vertical bar or pipe (Shift + Backslash)
+
+        # Interprete linebreak as Return
+        '\n': 'KEY_ENTER'  # Linebreak
+    }
+
+    dict_ydotool_special_se = {
+        # Space-related Keys
+        ' ': 'KEY_SPACE',  # 57
+
+        # Mathematical and Symbolic Operators
+        '-': 'KEY_KPMINUS',  # 74
+        '_': 'KEY_RIGHTALT KEY_MINUS',  # 12
+        '+': 'KEY_KPPLUS',  # 78
+        '=': 'KEY_LEFTSHIFT KEY_0',
+        '<': 'KEY_102ND',  # 86
+        '>': 'KEY_LEFTSHIFT KEY_102ND',  # 86
+        '*': 'KEY_KPASTERISK',  # 55
+        '/': 'KEY_KPSLASH',  # 98
+        '\\': 'KEY_RIGHTALT KEY_MINUS',  # 12
+
+        # Punctuation Marks
+        '.': 'KEY_DOT',  # 52
+        ',': 'KEY_COMMA',  # 51
+        ':': 'KEY_RIGHTSHIFT KEY_DOT',  # 52, left shift does not work
+        ';': 'KEY_RIGHTSHIFT KEY_COMMA',  # 51, left shift does not work
+        '!': 'KEY_LEFTSHIFT KEY_1',  # 2
+        '?': 'KEY_LEFTSHIFT KEY_MINUS',  # 12
+        '@': 'KEY_RIGHTALT KEY_2',  # 3
+        '#': 'KEY_LEFTSHIFT KEY_3',  # 4
+        '$': 'KEY_RIGHTALT KEY_4',  # 5
+        '%': 'KEY_LEFTSHIFT KEY_5',  # 6
+        '^': 'KEY_LEFTSHIFT KEY_RIGHTBRACE',  # 27, must hit space after
+        '&': 'KEY_LEFTSHIFT KEY_6',  # 7
+        '~': 'KEY_GRAVE',  # 41
+        '`': 'KEY_LEFTSHIFT KEY_EQUAL',  # 13, must hit space after
+        "'": 'KEY_BACKSLASH',  # 43
+        '"': 'KEY_LEFTSHIFT KEY_2',  # 3
+
+        # Brackets and Parentheses
+        '(': 'KEY_LEFTSHIFT KEY_8',  # 9
+        ')': 'KEY_LEFTSHIFT KEY_9',  # 10
+        '[': 'KEY_RIGHTALT KEY_8',  # 9
+        ']': 'KEY_RIGHTALT KEY_9',  # 10
+        '{': 'KEY_RIGHTALT KEY_7',  # 8
+        '}': 'KEY_RIGHTALT KEY_0',  # 11
+
+        # Pipe and Bar Symbols
+        '|': 'KEY_RIGHTALT KEY_102ND',  # 86
+
+        # Interprete linebreak as Return
+        '\n': 'KEY_ENTER'
+    }
+
+    list_result = []
+    buffer = ""
+    last_char = ""
+    dict_special = {}
+    dict_ket2code = {}
+
+    if tool == "xdotool":
+        dict_special = dict_xdotool_special
+    elif tool == "ydotool":
+        dict_ket2code = get_ket2code_dict()
+        if get_keyboard_layout() == 'se':
+            dict_special = dict_ydotool_special_se
+        else:
+            dict_special = dict_ydotool_special_us
+    else:
+        error("Unknown tool: " + tool)
+
+    for char in text:
+
+        # special characters
+        if char in dict_special:
+            char_code_raw = dict_special[char]
+            # convert to list by space
+            char_codes_raw = char_code_raw.split()
+            char_code = char_codes_raw[0]
+            # additional translation for ydotool
+            if tool == "ydotool":
+                not_valid = "Invalid key code variable '"
+                invalid_key = not_valid + char_code + "' in '" + char + "'"
+                char_code = dict_ket2code.get(char_code, char_code)
+                # error if char_code is not a number
+                if not char_code.isdigit():
+                    error(invalid_key)
+                # if there are more than one key codes in a special key combo
+                if len(char_codes_raw) > 1:
+                    char_code_2 = char_codes_raw[1]
+                    char_code_2 = dict_ket2code.get(char_code_2, char_code_2)
+                    if not char_code_2.isdigit():
+                        error(invalid_key)
+                    keys_down = char_code + ":1 " + char_code_2 + ":1"
+                    keys_up = char_code + ":0 " + char_code_2 + ":0"
+                    char_code = keys_down + " " + keys_up
+                else:
+                    char_code = char_code + ":1 " + char_code + ":0"
+            # save all last normal-char and start new special-char buffer
+            if last_char == "normal":
+                list_result.append(["type", buffer])
+                buffer = " " + char_code
+            # extend special-char buffer
+            else:
+                if buffer == "":
+                    buffer = " " + char_code
+                else:
+                    buffer = buffer + " " + char_code
+            last_char = "special"
+
+        # normal characters
+        else:
+            # verify if the character is a number or letter, or space
+            if not char.isalnum():
+                error("Unsupported normal character: " + char)
+            # save all last special-char and start new normal-char buffer
+            if last_char == "special":
+                list_result.append(["key", buffer])
+                buffer = " " + char
+            # extend normal-char buffer
+            else:
+                if buffer == "":
+                    buffer = " " + char
+                else:
+                    buffer = buffer + char
+            last_char = "normal"
+
+    # save the last buffer
+    if last_char == "special":
+        list_result.append(["key", buffer])
+    elif last_char == "normal":
+        list_result.append(["type", buffer])
+
+    return list_result
+
+
+def text_to_modifyer_keys(keys, tool):
+    debug("Keys: " + keys + " Tool: " + tool)
+
+    if not keys:
+        error("No modifier keys provided")
+
+    keys_xdotool = {
+        # Modifier Keys
+        'KEY_LEFTCTRL': 'Control_L',
+        'KEY_RIGHTCTRL': 'Control_R',
+        'KEY_LEFTSHIFT': 'Shift_L',
+        'KEY_RIGHTSHIFT': 'Shift_R',
+        'KEY_LEFTALT': 'Alt_L',
+        'KEY_RIGHTALT': 'Alt_R',
+        'KEY_LEFTMETA': 'Super_L',
+        'KEY_RIGHTMETA': 'Super_R',
+        'KEY_MENU': 'Menu',
+        'KEY_CAPSLOCK': 'Caps_Lock',
+        'KEY_NUMLOCK': 'Num_Lock',
+        'KEY_SCROLLLOCK': 'Scroll_Lock',
+
+        # Navigation Keys
+        'KEY_UP': 'Up',
+        'KEY_DOWN': 'Down',
+        'KEY_LEFT': 'Left',
+        'KEY_RIGHT': 'Right',
+        'KEY_HOME': 'Home',
+        'KEY_END': 'End',
+        'KEY_PAGEUP': 'Page_Up',
+        'KEY_PAGEDOWN': 'Page_Down',
+        'KEY_INSERT': 'Insert',
+        'KEY_DELETE': 'Delete',
+
+        # Functional Keys
+        'KEY_ESC': 'Escape',
+        'KEY_PRINT': 'Print',
+        'KEY_F1': 'F1',
+        'KEY_F2': 'F2',
+        'KEY_F3': 'F3',
+        'KEY_F4': 'F4',
+        'KEY_F5': 'F5',
+        'KEY_F6': 'F6',
+        'KEY_F7': 'F7',
+        'KEY_F8': 'F8',
+        'KEY_F9': 'F9',
+        'KEY_F10': 'F10',
+        'KEY_F11': 'F11',
+        'KEY_F12': 'F12',
+
+        # Typing and Editing Keys
+        'KEY_BACKSPACE': 'BackSpace',
+        'KEY_TAB': 'Tab',
+        'KEY_ENTER': 'Return',
+        'KEY_SPACE': 'space'
+    }
+
+    # error if a plus sign is in the keys
+    if "+" in keys:
+        error("Plus sign is not allowed, use space to separate keys")
+
+    # convert keys to xdotool format
+    list_keys = keys.split()
+    if len(list_keys) == 1:
+        error("Missing second key for key combination")
+
+    combo_string = ""
+
+    if tool == "xdotool":
+        for key in list_keys:
+            # key code variable
+            if len(key) > 1:
+                key = key.upper()
+                if not key.startswith("KEY_") or key.startswith("BTN_"):
+                    key = "KEY_" + key
+                key_code = keys_xdotool.get(key, key)
+            # single letter
+            else:
+                key_code = key
+            combo_string = combo_string + key_code + "+"
+
+        # remove the last plus sign
+        combo_string = combo_string[:-1]
+
+    elif tool == "ydotool":
+        dict_ket2code = get_ket2code_dict()
+        combo_string_dn = ""
+        combo_string_up = ""
+        for key in list_keys:
+            key = key.upper()
+            if not key.startswith("KEY_") or key.startswith("BTN_"):
+                key = "KEY_" + key
+            key_code = dict_ket2code.get(key, key)
+            debug("Key: " + key + " Code: " + key_code)
+            # error if char_code is not a number
+            not_valid = "Invalid key code variable '"
+            if not key_code.isdigit():
+                error(not_valid + key + "' in '" + keys + "'")
+
+            combo_string_dn = combo_string_dn + key_code + ":1 "
+            combo_string_up = combo_string_up + key_code + ":0 "
+
+        combo_string = combo_string_dn + combo_string_up
+        # remove the last space
+        combo_string = combo_string[:-1]
+    else:
+        error("Unknown tool: " + tool)
+
+    if combo_string == "":
+        error("No valid keys found")
+
+    return combo_string
+
+
+def dotool_wrapper(line, tool="xdotool", key_mode="type", delay=120):
+    if not line or line == "":
+        error("No line passed to dotool_wrapper")
+
+    if tool == "xdotool":
+        arg_delay = "--delay "
+    elif tool == "ydotool":
+        arg_delay = "--key-delay "
+    else:
+        arg_delay = ""
+        error("Unknown tool: " + tool)
+
+    if not isinstance(delay, int):
+        error("Delay must be an integer")
+
+    if key_mode == "type":
+        arg_mode = " type "
+    elif key_mode == "key" or key_mode == "mod":
+        arg_mode = " key "
+        # bugfix:
+        # prevet keycombo from being too slow and printing wrong characters
+        if delay > 200:
+            delay = 200
+    else:
+        arg_mode = ""
+        error("Unknown key mode: " + key_mode)
+
+    command = tool + arg_mode + arg_delay + str(delay) + line
+    cmd_result, cmd_error = shell_cmd(command)
+    if cmd_error:
+        if tool == "xdotool" and "No such key name" in cmd_error:
+            debug("STDERR: " + cmd_error)
+            # remove leading spaces
+            error("Invalid key code variable in '" + line.lstrip() + "'")
+        else:
+            error(tool + ": " + cmd_error)
+
+
+def type_text(text_raw, from_file=False):
+    # abort if text_raw is empty
+    if not text_raw:
+        error("No input text provided")
+
+    # default tool
+    tool = "xdotool"
+    # xdotool is required for virt_viewer_is_running()
+    is_installed(tool)
+    if virt_viewer_is_running():
+        debug("virt-viewer is running")
+        tool = "ydotool"
+    else:
+        debug("virt-viewer is not running")
+
+    # override the tool with the env variable
+    if os.getenv("AUTOTYPE_TOOL"):
+        tool_env = os.getenv("AUTOTYPE_TOOL")
+        if tool_env != "xdotool" and tool_env != "ydotool":
+            error("Unknown program in env AUTOTYPE_TOOL=" + tool_env)
+        else:
+            debug("env override AUTOTYPE_TOOL=" + tool_env)
+            tool = tool_env
+
+    debug("Tool: " + tool)
+    is_installed(tool)
+
+    if args.delay or args.delay == 0:
+        delay = args.delay
+        # if delay is a string
+        if delay.isdigit() is False:
+            if delay == "child":
+                delay = 500
+            elif delay == "generic":
+                delay = 250
+            elif delay == "clerk":
+                delay = 180
+            elif delay == "programmer":
+                delay = 120
+            elif delay == "hacker":
+                delay = 90
+            else:
+                error("Unknown delay alias: '" + delay
+                      + "', allowed: child generic clerk programmer hacker")
+        elif int(delay) < 0:
+            error("Delay must be a positive integer")
+        elif int(delay) > 1300:
+            error("Delay must be less than 1300, else xdotool will bug out")
+        else:
+            delay = int(delay)
+    else:
+        delay = 120
+
+    # iterate over each line as a separate text
+    if from_file:
+        # add a space after the caret and grave accent
+        # when reading from file, this is what the user usually wants
+        text_raw_new = []
+        for line_raw_new in text_raw:
+            line_raw_new = line_raw_new.replace("^", "^ ")
+            line_raw_new = line_raw_new.replace("`", "` ")
+            text_raw_new.append(line_raw_new)
+        for line_raw in text_raw_new:
+            # remove linebreak from line_raw
+            text = text_to_tool_encoding(line_raw, tool)
+            for line in text:
+                key_mode = line[0]
+                text = line[1]
+                dotool_wrapper(text, tool, key_mode, delay)
+    # process the text as keyboard combinations
+    elif args.mod:
+        text = " " + text_to_modifyer_keys(text_raw, tool)
+        dotool_wrapper(text, tool, "mod", delay)
+    # process the text as a whole
+    else:
+        text = text_to_tool_encoding(text_raw, tool)
+        for line in text:
+            key_mode = line[0]
+            text = line[1]
+            dotool_wrapper(text, tool, key_mode, delay)
+
+
+def main():
+    # read from file / stdin
+    if not sys.stdin.isatty():
+        new_text = sys.stdin.readlines()
+        new_from_file = True
+    # read from argument
+    else:
+        new_text = args.text
+        new_from_file = False
+
+    # debug mode
+    if os.getenv("AUTOTYPE_DEBUG"):
+        debug_level = os.getenv("AUTOTYPE_DEBUG")
+        if debug_level == "debug":
+            file_log = os.path.expanduser("~") + "/.autotype.log"
+            os.system("touch " + file_log)
+            os.system("chmod 600 " + file_log)
+            logging.basicConfig(filename=file_log, filemode='w',
+                                level=logging.DEBUG)
+        else:
+            error("Unknown debug level: " + debug_level)
+
+    type_text(new_text, from_file=new_from_file)
+
+
+# main
+if __name__ == "__main__":
+    main()
