@@ -120,7 +120,7 @@ Results in:
 
 ## KNOWN BUGS
 
-If the text starts with a minux sign (-), autotype will interpret it as an
+If the text starts with a minus sign (-), autotype will interpret it as an
 option. To avoid this, use the `--` option to signal the end of options:
 
     $ autotype -d 10 -- '-hello'
