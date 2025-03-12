@@ -28,6 +28,8 @@ Autotype can as-is copy-type text from a file or from `stdin`.
 
 - `-d`, `--delay MS | ACTOR`  
   Delay (in milliseconds) between each key press.  
+  Default is 120 milliseconds.  
+  Maximum delay is 1300 milliseconds, else xdotool will bug out.  
   Instead of MS, you can use ACTOR to automatically choose a delay based on a
   name. Here is the list:
 
@@ -115,6 +117,13 @@ Results in:
 
     $ KEY_LEFTCTRL 29
     $ KEY_RIGHTCTRL 97
+
+## KNOWN BUGS
+
+If the text starts with a minux sign (-), autotype will interpret it as an
+option. To avoid this, use the `--` option to signal the end of options:
+
+    $ autotype -d 10 -- '-hello'
 
 ## DEPENDENCIES
 

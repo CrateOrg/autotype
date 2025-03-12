@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# coding=utf-8
 
 import os
 import sys
@@ -176,6 +177,7 @@ def text_to_tool_encoding(text, tool):
         '\n': 'Return'  # Linebreak
     }
 
+    # todo: this is still incomplete
     dict_ydotool_special_us = {
         # Space-related Keys
         ' ': 'KEY_SPACE',  # Space key
@@ -230,44 +232,44 @@ def text_to_tool_encoding(text, tool):
         ' ': 'KEY_SPACE',  # 57
 
         # Mathematical and Symbolic Operators
-        '-': 'KEY_KPMINUS',  # 74
-        '_': 'KEY_RIGHTALT KEY_MINUS',  # 12
-        '+': 'KEY_KPPLUS',  # 78
+        '-': 'KEY_KPMINUS',
+        '_': 'KEY_LEFTSHIFT KEY_SLASH',
+        '+': 'KEY_KPPLUS',
         '=': 'KEY_LEFTSHIFT KEY_0',
-        '<': 'KEY_102ND',  # 86
-        '>': 'KEY_LEFTSHIFT KEY_102ND',  # 86
-        '*': 'KEY_KPASTERISK',  # 55
-        '/': 'KEY_KPSLASH',  # 98
-        '\\': 'KEY_RIGHTALT KEY_MINUS',  # 12
+        '<': 'KEY_102ND',
+        '>': 'KEY_LEFTSHIFT KEY_102ND',
+        '*': 'KEY_KPASTERISK',
+        '/': 'KEY_KPSLASH',
+        '\\': 'KEY_RIGHTALT KEY_MINUS',
 
         # Punctuation Marks
-        '.': 'KEY_DOT',  # 52
-        ',': 'KEY_COMMA',  # 51
-        ':': 'KEY_RIGHTSHIFT KEY_DOT',  # 52, left shift does not work
-        ';': 'KEY_RIGHTSHIFT KEY_COMMA',  # 51, left shift does not work
-        '!': 'KEY_LEFTSHIFT KEY_1',  # 2
-        '?': 'KEY_LEFTSHIFT KEY_MINUS',  # 12
-        '@': 'KEY_RIGHTALT KEY_2',  # 3
-        '#': 'KEY_LEFTSHIFT KEY_3',  # 4
-        '$': 'KEY_RIGHTALT KEY_4',  # 5
-        '%': 'KEY_LEFTSHIFT KEY_5',  # 6
-        '^': 'KEY_LEFTSHIFT KEY_RIGHTBRACE',  # 27, must hit space after
-        '&': 'KEY_LEFTSHIFT KEY_6',  # 7
-        '~': 'KEY_GRAVE',  # 41
-        '`': 'KEY_LEFTSHIFT KEY_EQUAL',  # 13, must hit space after
-        "'": 'KEY_BACKSLASH',  # 43
-        '"': 'KEY_LEFTSHIFT KEY_2',  # 3
+        '.': 'KEY_DOT',
+        ',': 'KEY_COMMA',
+        ':': 'KEY_RIGHTSHIFT KEY_DOT',  # left shift does not work
+        ';': 'KEY_RIGHTSHIFT KEY_COMMA',  # left shift does not work
+        '!': 'KEY_LEFTSHIFT KEY_1',
+        '?': 'KEY_LEFTSHIFT KEY_MINUS',
+        '@': 'KEY_RIGHTALT KEY_2',
+        '#': 'KEY_LEFTSHIFT KEY_3',
+        '$': 'KEY_RIGHTALT KEY_4',
+        '%': 'KEY_LEFTSHIFT KEY_5',
+        '^': 'KEY_LEFTSHIFT KEY_RIGHTBRACE',  # must hit space after
+        '&': 'KEY_LEFTSHIFT KEY_6',
+        '~': 'KEY_RIGHTALT KEY_RIGHTBRACE',  # must hit space after
+        '`': 'KEY_LEFTSHIFT KEY_EQUAL',  # must hit space after
+        "'": 'KEY_BACKSLASH',
+        '"': 'KEY_LEFTSHIFT KEY_2',
 
         # Brackets and Parentheses
-        '(': 'KEY_LEFTSHIFT KEY_8',  # 9
-        ')': 'KEY_LEFTSHIFT KEY_9',  # 10
-        '[': 'KEY_RIGHTALT KEY_8',  # 9
-        ']': 'KEY_RIGHTALT KEY_9',  # 10
-        '{': 'KEY_RIGHTALT KEY_7',  # 8
-        '}': 'KEY_RIGHTALT KEY_0',  # 11
+        '(': 'KEY_LEFTSHIFT KEY_8',
+        ')': 'KEY_LEFTSHIFT KEY_9',
+        '[': 'KEY_RIGHTALT KEY_8',
+        ']': 'KEY_RIGHTALT KEY_9',
+        '{': 'KEY_RIGHTALT KEY_7',
+        '}': 'KEY_RIGHTALT KEY_0',
 
         # Pipe and Bar Symbols
-        '|': 'KEY_RIGHTALT KEY_102ND',  # 86
+        '|': 'KEY_RIGHTALT KEY_102ND',
 
         # Interprete linebreak as Return
         '\n': 'KEY_ENTER'
@@ -417,8 +419,6 @@ def text_to_modifyer_keys(keys, tool):
 
     # convert keys to xdotool format
     list_keys = keys.split()
-    if len(list_keys) == 1:
-        error("Missing second key for key combination")
 
     combo_string = ""
 
@@ -567,6 +567,7 @@ def type_text(text_raw, from_file=False):
         for line_raw_new in text_raw:
             line_raw_new = line_raw_new.replace("^", "^ ")
             line_raw_new = line_raw_new.replace("`", "` ")
+            line_raw_new = line_raw_new.replace("~", "~ ")
             text_raw_new.append(line_raw_new)
         for line_raw in text_raw_new:
             # remove linebreak from line_raw
