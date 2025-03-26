@@ -15,10 +15,13 @@ Default tool is `xdotool`, but `ydotool` is chosen if the active window name
 ends in 'on QEMU/KVM'. This is because `xdotool` does not work well with
 virt-manager or virt-viewer.
 
-Autotype uses the same syntax for both `ydotool` and `ydotool`. The syntax is
+Autotype uses the same syntax for both `xdotool` and `ydotool`. The syntax is
 based on /usr/include/linux/input-event-codes.h key variables.
 
-Autotype can as-is copy-type text from a file or from `stdin`.
+Autotype can copy-type text, as-is, from a file or from `stdin`.  
+Meaning it can be used to write down text to another program or window, locally
+or remotely. Including most special characters like bar, ampersand, quotes and
+so on.
 
 ## OPTIONS
 
