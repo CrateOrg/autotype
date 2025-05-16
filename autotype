@@ -81,11 +81,10 @@ def is_installed(program):
 def virt_viewer_is_running():
     # check if the current window is "virt-viewer" or "virt-manager"
 
-    command = "xdotool getactivewindow getwindowname"
+    # bugfix: '|| true' because 'xdotool getactivewindow' sometimes fails
+    # for example when running 'xtightvncviewer' with '-fullscreen'
+    command = "xdotool getactivewindow getwindowname || true"
     cmd_result, cmd_error = shell_cmd(command)
-
-    if cmd_error:
-        error(command + ": " + cmd_error)
 
     if " on QEMU/KVM" in cmd_result:
         return True

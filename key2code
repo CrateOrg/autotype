@@ -47,7 +47,7 @@ def parse_input_event_codes(key_to_find=None, list_keys=False):
                 error("Key " + key_to_find + " not found")
 
     except FileNotFoundError:
-        error("File " + file_keys + " not found.")
+        error("File " + file_keys + " not found. Try install 'linux-libc-dev'")
     except Exception as e:
         error("Exception: " + str(e))
 
